@@ -93,7 +93,7 @@ const policyId = allScript.hash().to_hex();
 
 const mintAsset = {
   assetName: 'TestAsset',
-  quantity: 1000000,
+  quantity: '1000000',
 }
 
 const encodedAssetName = new TextEncoder().encode(mintAsset.assetName);
@@ -113,7 +113,16 @@ mintBuilder.add_asset(
 mintBuilder.build();
 txBuilder.set_mint_builder(mintBuilder);
 
-const multiAsset = CardanoWasm.MultiAsset.from_json('{"' + policyId + '":{"' + cardanoAssetName.to_hex() + '":"' + mintAsset.quantity + '"}}');
+// Creating multi asset via API
+const multiAsset = CardanoWasm.MultiAsset.new();
+const asset = CardanoWasm.Assets.new();
+asset.insert(cardanoAssetName, CardanoWasm.BigNum.from_str(mintAsset.quantity));
+multiAsset.insert(allScript.hash(), asset);
+
+// This seems to cause the 'UTxO Balance Insufficient' error
+// Creating multi asset via JSON
+// const multiAsset = CardanoWasm.MultiAsset.from_json('{"' + policyId + '":{"' + cardanoAssetName.to_hex() + '":"' + mintAsset.quantity + '"}}');
+
 const txoBuilder = CardanoWasm.TransactionOutputBuilder.new();
 const dataCost = CardanoWasm.DataCost.new_coins_per_byte(CardanoWasm.BigNum.from_str(protocolParameters.coins_per_utxo_size || '4310'));
 const txo = txoBuilder.with_address(outputAddr).next().with_asset_and_min_required_coin_by_utxo_cost(multiAsset, dataCost).build();
@@ -136,19 +145,30 @@ const value = CardanoWasm.Value.new(
 const output = CardanoWasm.TransactionOutput.new(changeAddr, value);
 
 const input = CardanoWasm.TransactionInput.new(
-  CardanoWasm.TransactionHash.from_bytes(Buffer.from('c27120f08825c5e2091d98c2648de136b4bb4d488ae07c034097be3bd4825c60', 'hex')),
+  CardanoWasm.TransactionHash.from_hex('c27120f08825c5e2091d98c2648de136b4bb4d488ae07c034097be3bd4825c60'),
   1,
 );
 
 const unspentOutputs = CardanoWasm.TransactionUnspentOutputs.new();
 unspentOutputs.add(CardanoWasm.TransactionUnspentOutput.new(input, output));
 
+const totalInputs = txBuilder.get_total_input();
+const totalOutputs = txBuilder.get_total_output();
+console.log('totalInputs', totalInputs.to_json());
+console.log('totalOutputs', totalOutputs.to_json());
+
+// Note: This is where the error is thrown (when using MutliAsset.from_json)
 txBuilder.add_inputs_from(
   unspentOutputs,
   CardanoWasm.CoinSelectionStrategyCIP2.LargestFirstMultiAsset,
 );
 
 txBuilder.add_change_if_needed(changeAddr);
+
+const totalInputsAfter = txBuilder.get_total_input();
+const totalOutputsAfter = txBuilder.get_total_output();
+console.log('totalInputsAfter', totalInputsAfter.to_json());
+console.log('totalOutputsAfter', totalOutputsAfter.to_json());
 
 const tx = txBuilder.build_tx();
 const txBody = tx.body();
